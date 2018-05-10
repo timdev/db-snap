@@ -1,0 +1,16 @@
+{
+    "name": "timdev/db-snap",
+    "description": "A command-line tool to take database snapshots and store them in S3",
+    "type": "project",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Tim Lieberman",
+            "email": "tim@timdev.com"
+        }
+    ],
+    "require": {
+        "aws/aws-sdk-php": "^3.55",
+        "league/climate": "^3.4"
+    }
+}
