@@ -90,6 +90,10 @@ try {
             'longPrefix' => 'local-dir',
             'description' => 'Local directory for snapshots.',
             'defaultValue' => sys_get_temp_dir() . '/db-snaps'
+        ],
+        'sshHost' => [
+            'longPrefix' => 'ssh-host',
+            'description' => 'SSH to this host to perform dump. ie: example.com or user@example.com'
         ]
     ]);
 } catch (\Exception $e) {
@@ -170,7 +174,12 @@ if (empty($hostname) && !in_array($args['dbhost'], ['localhost', '127.0.0.1'])) 
     $hostname = $args['dbhost'];
 }
 
-// otherwise use system hostname
+// if still no hostname, and we're dumping ove SSH, use whatever the ssh-host thinks it's own hostname is.
+if (empty($hostname) && $args['sshHost']){
+    $hostname = trim(`ssh -C {$args['sshHost']} hostname`);
+}
+
+// No user-override, no remote database server, no ssh-host, so use local machine hostname.
 if (empty($hostname)) {
     $hostname = gethostname();
 }
@@ -209,7 +218,11 @@ $tmpfile = "{$tmpdir}/{$dumpName}";
 $connArgs = dump_connection_args($args['dbhost'], $args['dbuser'], $args['dbpass']);
 
 // eschews pipes so that if mysqldump fails we get a non-zero exist code.
-$cmd = "mysqldump --single-transaction {$connArgs} ${dbname} > {$tmpfile} && bzip2 {$tmpfile}";
+$cmd = "mysqldump --single-transaction --events --triggers {$connArgs} ${dbname} > {$tmpfile} && bzip2 {$tmpfile}";
+
+if($args['sshHost']){
+    $cmd = "ssh {$args['sshHost']} {$cmd}";
+}
 
 $tmpfile .= '.bz2';
 
