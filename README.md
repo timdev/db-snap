@@ -6,6 +6,32 @@ It's (yet another) database snapshot script.  It dumps your database and sticks 
 It's implemented as a PHP script, and might be useful for folks who work in PHP.  Some day, I'll probably reimplement it
 in golang (or not). 
 
+## Features
+
+* Store bzip2-compressed snapshots of databases in S3.
+* Take snapshots over SSH
+    * No need to open database ports to backup machine
+    * Connect to a bastion host and pull data from other hosts on private network.
+* Cron Friendly
+    * Regular output to STDOUT, errors/warnings to STDERR.
+        * Write cron jobs to direct STDOUT someplace like a log file (`... >> /var/log/db-snap.log`)
+        * Configure cron to mail job output to you (via MAILTO) -- you'll only get email when something goes wrong.
+    * CLI options are the entire interface
+
+## Warning/Disclaimer/Guarantee
+
+I wrote this to meet my own needs, and it hasn't been tested beyond making it work for me.  Use it at your own risk.
+It might destroy your computer, network, or the known universe.  It's guaranteed to have at least a few bugs.
+
+You've been warned.  
+
+## Contributing
+
+If you find this useful, and want to contribute, feel free to open a pull request.
+
+If you want *me* to fix a bug, or implement some feature ... well, it can't hurt to ask.  Feel free to open an issue,
+but don't be sad if I ignore it.
+      
 ## Installation
 
 ```bash
@@ -58,6 +84,8 @@ Optional Arguments:
 		AWS Secret Access Key
 	--local-dir localDir (default: /var/folders/md/s_kbvcsd1kg_q2t1rl8l7d8w0000gn/T/db-snaps)
 		Local directory for snapshots.
+	--ssh-host sshHost
+	    Tunnel dump script through ssh to this host.  Value can be a hostname or user@hostname.  
 ```
  
 ## Snapshot Storage
@@ -74,12 +102,28 @@ Snapshots are stored in the specified S3 bucket.  By default, they a prefix of "
 filename.  This prefix can be changed using the `--s3prefix` option.  If you want your snapshots stored in the root
 of the bucket, simply specify an empty prefix (ie: `--s3prefix='''`)
 
+
+## Dump over SSH
+
+You can pull a dump from a remote server by passing the `--ssh-host=` option.  db-snap will invoke the dump script 
+(mysqldump) on the remote host, and stream the output to a local file.  Examples: 
+
+ * `--ssh-host=example.com` -- Connect to example.com
+ * `--ssh-host=alice@example.com` -- Connect to example.com as user `alice`
+ 
+ Notes:
+ 
+ * No password support.  You must be able to `ssh <ssh-host>` from the local machine and authenticate using public keys.
+ * Be careful about your ForwardAgent setup while testing.
+ 
+ This feature allows you to set up a central backup server that connects to various hosts to snapshot databases.  
+
 ## To-Do
 
 There are plenty of things that could be done to improve/extend this:
 
 - [ ] Allow S3 object paths to be constructed using string templates.
 - [ ] Add support for postgres.
-- [ ] Add support for pulling dumps through an SSH tunnel.
+- [x] Add support for pulling dumps through an SSH tunnel.
 - [ ] Make local snapshot retention period (currently six weeks) configurable via an option.
 - [ ] Figure out how to package this as a .phar
