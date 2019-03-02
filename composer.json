@@ -10,7 +10,11 @@
         }
     ],
     "require": {
-        "aws/aws-sdk-php": "^3.55",
-        "league/climate": "^3.4"
+        "php": "^7.1",
+        "aws/aws-sdk-php": "^3",
+        "league/climate": "^3.5"
+    },
+    "require-dev": {
+        "roave/security-advisories": "dev-master"
     }
 }

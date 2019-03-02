@@ -2,9 +2,9 @@
 
 ## What is this?
 
-It's (yet another) database snapshot script.  It dumps your database and sticks the dump in an S3 bucket. 
-It's implemented as a PHP script, and might be useful for folks who work in PHP.  Some day, I'll probably reimplement it
-in golang (or not). 
+It's (yet another) database snapshot script.  It dumps your (mysql) database and sticks the dump in an S3 bucket. 
+It's implemented as a PHP script, and might be useful for folks who work in PHP.  Some day, I'll probably reimplement 
+it in golang (or not). 
 
 ## Features
 
@@ -113,7 +113,7 @@ You can pull a dump from a remote server by passing the `--ssh-host=` option.  d
  
  Notes:
  
- * No password support.  You must be able to `ssh <ssh-host>` from the local machine and authenticate using public keys.
+ * No password support. You must be able to connect non-interactively (ie: ssh keys).
  * Be careful about your ForwardAgent setup while testing.
  
  This feature allows you to set up a central backup server that connects to various hosts to snapshot databases.  
