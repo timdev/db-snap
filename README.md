@@ -42,7 +42,7 @@ $ composer install
 
 ## How To
 
-A minimal invokation might looks like this (from the project root):
+A minimal invocation might looks like this (from the project root):
 
 `./bin/db-snap --db=exampledb --s3bucket=my-private-s3-bucket`
 
@@ -92,7 +92,7 @@ Optional Arguments:
 
 Snapshots will be stored locally in $TEMP/db-snaps, unless you specify another local directory using the --local-dir 
 options.  Using --local-dir is recommended, so your system doesn't automatically clean up local snapshots.  This script
-automatically purges local backups that are moe than 6 weeks old at the end of each successful run.
+automatically purges local backups that are more than 6 weeks old at the end of each successful run.
 
 Snapshots will be named by composing the host-name, database name, and date: `<hostname>.<dbname>.<datestamp>.sql.bz2`.  
 For example, if your database host is `db01.example.com`, and your database is `customers`, the snapshot file will be

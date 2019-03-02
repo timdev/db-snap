@@ -11,19 +11,19 @@ ini_set('date.timezone', 'UTC');
 require __DIR__ . '/../vendor/autoload.php';
 
 define('NAME', 'timdev/db-snap');
-define('VERSION', '1.0.0');
-define('DATE', '2018-01-10');
+define('VERSION', '1.0.1');
+define('DATE', '2019-03-02');
 
 $cli = new CLImate();
 $cli->description(sprintf('%s v%s [%s]', NAME, VERSION, DATE));
 
 if (empty(`which mysqldump`)){
-    $cli->red('Cannot find `mysqldump` binary.  Check that it is on your $PATH');
+    $cli->to('error')->red('Cannot find `mysqldump` binary.  Check that it is on your $PATH');
     exit(1);
 }
 
 if (empty(`which bzip2`)){
-    $cli->red('Cannot find `bzip2` binary.  Check that it is on your $PATH');
+    $cli->to('error')->red('Cannot find `bzip2` binary.  Check that it is on your $PATH');
     exit(1);
 }
 
@@ -117,8 +117,8 @@ if (in_array('-h', $argv, true) || in_array('--help', $argv, true)) {
 try {
     $cli->arguments->parse();
 } catch (\Exception $e) {
-    $cli->red($e->getMessage());
-    $cli->usage();
+    $cli->to('error')->red($e->getMessage());
+    $cli->to('error')->usage();
     exit(1);
 }
 
@@ -144,8 +144,8 @@ $dbname = $args['dbname'];
 $bucket = $args['bucket'];
 
 if (empty($args['awsAccessKey']) !== empty($args['awsSecretKey'])) {
-    $cli->red('Options --aws-access-key-id and --aws-secret-access-key must be specified together');
-    $cli->usage();
+    $cli->to('error')->red('Options --aws-access-key-id and --aws-secret-access-key must be specified together');
+    $cli->to('error')->usage();
     exit(1);
 }
 
@@ -158,7 +158,7 @@ if (!is_dir($tmpdir) && !mkdir($tmpdir) && !is_dir($tmpdir)) {
 }
 
 if (!is_writable($tmpdir)) {
-    $cli->to('error')->red("Local temp directory ({$tmpdir}) is not writable.");
+    $cli->to('error')->to('error')->red("Local temp directory ({$tmpdir}) is not writable.");
     exit(1);
 }
 
