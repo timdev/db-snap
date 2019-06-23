@@ -11,7 +11,7 @@ ini_set('date.timezone', 'UTC');
 require __DIR__ . '/../vendor/autoload.php';
 
 define('NAME', 'timdev/db-snap');
-define('VERSION', '1.0.1');
+define('VERSION', '1.0.2');
 define('DATE', '2019-03-02');
 
 $cli = new CLImate();
@@ -218,7 +218,7 @@ $tmpfile = "{$tmpdir}/{$dumpName}";
 $connArgs = dump_connection_args($args['dbhost'], $args['dbuser'], $args['dbpass']);
 
 // eschews pipes so that if mysqldump fails we get a non-zero exist code.
-$cmd = "mysqldump --single-transaction --events --triggers {$connArgs} ${dbname} > {$tmpfile} && bzip2 {$tmpfile}";
+$cmd = "mysqldump --single-transaction --triggers {$connArgs} ${dbname} > {$tmpfile} && bzip2 {$tmpfile}";
 
 if($args['sshHost']){
     $cmd = "ssh {$args['sshHost']} {$cmd}";
