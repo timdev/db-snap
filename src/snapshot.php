@@ -4,6 +4,7 @@
 use Aws\Exception\MultipartUploadException;
 use Aws\S3\MultipartUploader;
 use Aws\S3\S3Client;
+use Aws\S3\S3MultiRegionClient;
 use League\CLImate\CLImate;
 
 ini_set('date.timezone', 'UTC');
@@ -84,7 +85,11 @@ try {
         ],
         'awsSecretKey' => [
             'longPrefix' => 'aws-secret-access-key',
-            'description' => "AWS Secret Access Key"
+            'description' => 'AWS Secret Access Key'
+        ],
+        'awsRegion' => [
+            'longPrefix' => 'aws-region',
+            'description' => 'AWS region to connect to'
         ],
         'localDir' => [
             'longPrefix' => 'local-dir',
@@ -94,6 +99,11 @@ try {
         'sshHost' => [
             'longPrefix' => 'ssh-host',
             'description' => 'SSH to this host to perform dump. ie: example.com or user@example.com'
+        ],
+        'deleteLocal' => [
+            'longPrefix' => 'delete-local',
+            'description' => 'Delete local snapshot after successful upload to s3.',
+            'noValue' => true
         ]
     ]);
 } catch (\Exception $e) {
@@ -188,9 +198,13 @@ if (empty($hostname)) {
  * Build an S3 Client.
  */
 $s3Opts = [
-    'version' => 'latest',
-    'region' => 'us-west-2'
+    'version' => 'latest'
 ];
+
+if (! empty($args['awsRegion'])){
+    $s3Opts['region'] = $args['awsRegion'];
+}
+
 if (!empty($args['awsAccessKey'])) {
     $cli->yellow("Using AWS Key: {$args['awsAccessKey']}.  Consider using profiles instead.");
     $s3Opts['credentials'] = [
@@ -206,7 +220,7 @@ if (!empty($args['awsAccessKey'])) {
     $cli->yellow('No credentials or profile specified, relying on environment for AWS authentication.');
 }
 
-$s3 = new S3Client($s3Opts);
+$s3 = new S3MultiRegionClient($s3Opts);
 
 /*
  * Perform a dump
@@ -298,6 +312,10 @@ $elapsedTime = $endTime - $startTime;
 $cli->out('Backup completed at ' . date('c', $endTime));
 $cli->out("Backup took {$elapsedTime} seconds");
 
+if ($cli->arguments->get('deleteLocal')){
+    $cli->out('Deleting local snapshot because --delete-local');
+    unlink($tmpfile);
+}
 
 $cli->table([
     ['Host', $hostname],
