@@ -235,7 +235,7 @@ $tmpfile = "{$tmpdir}/{$dumpName}";
 $connArgs = dump_connection_args($args['dbhost'], $args['dbuser'], $args['dbpass']);
 
 // eschews pipes so that if mysqldump fails we get a non-zero exist code.
-$cmd = "mysqldump --single-transaction --triggers {$connArgs} ${dbname} > {$tmpfile} && bzip2 {$tmpfile}";
+$cmd = "mysqldump --single-transaction --triggers {$connArgs} --databases ${dbname} > {$tmpfile} && bzip2 {$tmpfile}";
 
 if($args['sshHost']){
     $cmd = "ssh {$args['sshHost']} {$cmd}";
