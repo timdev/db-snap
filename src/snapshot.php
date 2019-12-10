@@ -11,8 +11,8 @@ ini_set('date.timezone', 'UTC');
 require __DIR__ . '/../vendor/autoload.php';
 
 define('NAME', 'timdev/db-snap');
-define('VERSION', '1.0.2');
-define('DATE', '2019-03-02');
+define('VERSION', '1.0.3');
+define('DATE', '2019-12-10');
 
 $cli = new CLImate();
 $cli->description(sprintf('%s v%s [%s]', NAME, VERSION, DATE));
@@ -76,7 +76,7 @@ try {
         'awsProfile' => [
             'longPrefix' => 'aws-profile',
             'description' => 'AWS Profile (from ~/.aws/credentials) to use to connect to S3',
-            'defaultValue' => 'default'
+            'defaultValue' => null
         ],
         'awsAccessKey' => [
             'longPrefix' => 'aws-access-key-id',
@@ -189,7 +189,7 @@ if (empty($hostname)) {
  */
 $s3Opts = [
     'version' => 'latest',
-    'region' => 'us-east-1'
+    'region' => 'us-west-2'
 ];
 if (!empty($args['awsAccessKey'])) {
     $cli->yellow("Using AWS Key: {$args['awsAccessKey']}.  Consider using profiles instead.");
@@ -197,12 +197,15 @@ if (!empty($args['awsAccessKey'])) {
         'key' => $args['awsAccessKey'],
         'secret' => $args['awsSecretKey']
     ];
-} else {
+} elseif (!empty($args['awsProfile'])) {
     if ($args['awsProfile'] === 'default') {
         $cli->yellow("Using AWS Profile: {$args['awsProfile']}.  (Use --aws-profile= to use a different profile");
     }
     $s3Opts['profile'] = $args['awsProfile'];
+}else{
+    $cli->yellow('No credentials or profile specified, relying on environment for AWS authentication.');
 }
+
 $s3 = new S3Client($s3Opts);
 
 /*
