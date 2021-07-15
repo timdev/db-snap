@@ -11,19 +11,19 @@ ini_set('date.timezone', 'UTC');
 
 require __DIR__ . '/../vendor/autoload.php';
 
-define('NAME', 'timdev/db-snap');
-define('VERSION', '1.0.3');
-define('DATE', '2019-12-10');
+const NAME = 'timdev/db-snap';
+const VERSION = '1.0.4';
+const DATE = '2021-07-14';
 
 $cli = new CLImate();
 $cli->description(sprintf('%s v%s [%s]', NAME, VERSION, DATE));
 
-if (empty(`which mysqldump`)){
+if (empty(shell_exec("which mysqldump"))){
     $cli->to('error')->red('Cannot find `mysqldump` binary.  Check that it is on your $PATH');
     exit(1);
 }
 
-if (empty(`which bzip2`)){
+if (empty(shell_exec("which bzip2"))){
     $cli->to('error')->red('Cannot find `bzip2` binary.  Check that it is on your $PATH');
     exit(1);
 }
@@ -102,14 +102,21 @@ try {
         ],
         'deleteLocal' => [
             'longPrefix' => 'delete-local',
-            'description' => 'Delete local snapshot after successful upload to s3.',
+            'description' => 'Delete local snapshot immediately after successful upload to s3.',
             'noValue' => true
+        ],
+        'sweepDays' => [
+            'longPrefix' => 'sweep-days',
+            'description' => 'Delete all files in <local-dir> more than <sweep-days> days old.'
         ]
     ]);
 } catch (\Exception $e) {
     $cli->to('error')->red($e->getMessage());
     exit(1);
 }
+
+$startTime = time();
+$cli->out('Backup script started at ' . date('c', $startTime));
 
 /*
  * Handle --help and --version first, since they make otherwise required arguments not required.
@@ -153,6 +160,14 @@ $args = $cli->arguments->toArray();
 $dbname = $args['dbname'];
 $bucket = $args['bucket'];
 
+$sweepDays = $args['sweepDays'];
+if ($sweepDays && ! ctype_digit($sweepDays)){
+    $cli->to('error')->red('Option --sweep-days must be a positive integer.');
+    $cli->to('error')->usage();
+    exit(1);
+}
+
+
 if (empty($args['awsAccessKey']) !== empty($args['awsSecretKey'])) {
     $cli->to('error')->red('Options --aws-access-key-id and --aws-secret-access-key must be specified together');
     $cli->to('error')->usage();
@@ -186,7 +201,7 @@ if (empty($hostname) && !in_array($args['dbhost'], ['localhost', '127.0.0.1'])) 
 
 // if still no hostname, and we're dumping ove SSH, use whatever the ssh-host thinks it's own hostname is.
 if (empty($hostname) && $args['sshHost']){
-    $hostname = trim(`ssh -C {$args['sshHost']} hostname`);
+    $hostname = trim(shell_exec("ssh -C {\$args['sshHost']} hostname"));
 }
 
 // No user-override, no remote database server, no ssh-host, so use local machine hostname.
@@ -221,12 +236,6 @@ if (!empty($args['awsAccessKey'])) {
 }
 
 $s3 = new S3MultiRegionClient($s3Opts);
-
-/*
- * Perform a dump
- */
-$startTime = time();
-$cli->out('Backup script started at ' . date('c', $startTime));
 
 $dumpName = $hostname . '.' . $dbname . '.' . date('Ymd-Hi') . '.sql';
 $tmpfile = "{$tmpdir}/{$dumpName}";
@@ -302,10 +311,11 @@ $cli->out('OK');
 $cli->out('Upload took ' . (time() - $uploadStart) . ' seconds.');
 
 
-$cli->inline('Cleaning up local backups older than 6 weeks ... ');
-exec("find {$tmpdir} -mtime +42 | xargs rm -f");
-$cli->out('Done.');
-
+if ($sweepDays){
+    $cli->inline("Cleaning up local backups older than {$sweepDays} days ... ");
+    exec("find {$tmpdir} -mtime +{$sweepDays} | xargs rm -f");
+    $cli->out('Done.');
+}
 $endTime = time();
 $elapsedTime = $endTime - $startTime;
 
@@ -331,7 +341,7 @@ function human_filesize($bytes, $decimals = 2)
 {
     $sz = 'BKMGTP';
     $factor = (int)floor((strlen($bytes) - 1) / 3);
-    return sprintf("%.{$decimals}f", $bytes / pow(1024, $factor)) . ($sz[$factor] ?: '');
+    return sprintf("%.{$decimals}f", $bytes / (1024 ** $factor)) . ($sz[$factor] ?: '');
 }
 
 function dump_connection_args($host = null, $user = null, $pass = null)
