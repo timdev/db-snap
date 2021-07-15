@@ -107,7 +107,13 @@ try {
         ],
         'sweepDays' => [
             'longPrefix' => 'sweep-days',
-            'description' => 'Delete all files in <local-dir> more than <sweep-days> days old.'
+            'description' => 'Delete all files in <local-dir> more than <sweep-days> days old. Default: 42 days (6 weeks)',
+            'defaultValue' => 42
+        ],
+        'noSweep' => [
+            'longPrefix' => 'no-sweep',
+            'description' => 'Do not remove local files. Overrides --sweep-days.',
+            'noValue' => true
         ]
     ]);
 } catch (\Exception $e) {
@@ -167,6 +173,7 @@ if ($sweepDays && ! ctype_digit($sweepDays)){
     exit(1);
 }
 
+$noSweep = $args['noSweep'];
 
 if (empty($args['awsAccessKey']) !== empty($args['awsSecretKey'])) {
     $cli->to('error')->red('Options --aws-access-key-id and --aws-secret-access-key must be specified together');
@@ -311,11 +318,14 @@ $cli->out('OK');
 $cli->out('Upload took ' . (time() - $uploadStart) . ' seconds.');
 
 
-if ($sweepDays){
+if ($noSweep){
+    $cli->out("Not cleaning up local backups because --no-sweep was passed.");
+}else{
     $cli->inline("Cleaning up local backups older than {$sweepDays} days ... ");
     exec("find {$tmpdir} -mtime +{$sweepDays} | xargs rm -f");
     $cli->out('Done.');
 }
+
 $endTime = time();
 $elapsedTime = $endTime - $startTime;
 

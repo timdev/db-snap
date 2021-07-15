@@ -57,7 +57,7 @@ Which will work fine assuming:
 There are a bunch of optional CLI args available:
  
 ```text
-Usage: src/snapshot.php [--aws-access-key-id awsAccessKey] [--aws-profile awsProfile (default: )] [--aws-region awsRegion] [--aws-secret-access-key awsSecretKey] [--db dbname] [--db-host dbhost (default: localhost)] [--db-password dbpass] [--db-user dbuser] [--delete-local] [-h, --help] [--hostname hostname] [--local-dir localDir (default: /var/folders/73/96g__8gd7kx9fgcsmc1m_c500000gn/T/db-snaps)] [--s3bucket bucket] [--s3prefix bucketPrefix (default: db_backups)] [--ssh-host sshHost] [--sweep-days sweepDays] [-v, --version]
+Usage: ./snapshot.php [--aws-access-key-id awsAccessKey] [--aws-profile awsProfile (default: )] [--aws-region awsRegion] [--aws-secret-access-key awsSecretKey] [--db dbname] [--db-host dbhost (default: localhost)] [--db-password dbpass] [--db-user dbuser] [--delete-local] [-h, --help] [--hostname hostname] [--local-dir localDir (default: /var/folders/73/96g__8gd7kx9fgcsmc1m_c500000gn/T/db-snaps)] [--no-sweep] [--s3bucket bucket] [--s3prefix bucketPrefix (default: db_backups)] [--ssh-host sshHost] [--sweep-days sweepDays (default: 42)] [-v, --version]
 
 Required Arguments:
 	--db dbname
@@ -94,8 +94,10 @@ Optional Arguments:
 		SSH to this host to perform dump. ie: example.com or user@example.com
 	--delete-local
 		Delete local snapshot immediately after successful upload to s3.
-	--sweep-days sweepDays
-		Delete all files in <local-dir> more than <sweep-days> days old.
+	--sweep-days sweepDays (default: 42)
+		Delete all files in <local-dir> more than <sweep-days> days old. Default: 42 days (6 weeks)
+	--no-sweep
+		Do not remove local files. Overrides --sweep-days.
 ```
  
 ## Snapshot Storage
@@ -103,9 +105,9 @@ Optional Arguments:
 Snapshots will be stored locally in $TEMP/db-snaps, unless you specify another local directory using the --local-dir 
 options.  Using --local-dir is recommended, so your system doesn't automatically clean up local snapshots. 
 
-**Local snapshots are stored forever by default**. This is probably not what you actually want. Use the `--sweep-days`
-command line option to limit retention. `--sweep-days` must be >= 1, and when present, the script will delete all
-files in the snapshot directory that are more than `--sweep-days` old.
+By default, the script will remove all files from `--local-dir` that are older than 42 days (six weeks). You can change
+the retention period by providing a positive integer for `--sweep-days`. If you don't want to delete any files, you can
+pass the `--no-sweep` flag.
 
 Alternatively, you can pass `--delete-local`, which will remove the local copy of the current snapshot as soon as it is
 successfully uploaded to S3.
