@@ -10,9 +10,9 @@
         }
     ],
     "require": {
-        "php": ">=7.2",
-        "aws/aws-sdk-php": "^3",
-        "league/climate": "^3.5",
+        "php": ">=7.4",
+        "aws/aws-sdk-php": "^3.209",
+        "league/climate": "^3.7",
         "ext-ctype": "*"
     },
     "require-dev": {
