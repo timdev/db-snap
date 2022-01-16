@@ -3,7 +3,6 @@
 
 use Aws\Exception\MultipartUploadException;
 use Aws\S3\MultipartUploader;
-use Aws\S3\S3Client;
 use Aws\S3\S3MultiRegionClient;
 use League\CLImate\CLImate;
 
@@ -12,8 +11,8 @@ ini_set('date.timezone', 'UTC');
 require __DIR__ . '/../vendor/autoload.php';
 
 const NAME = 'timdev/db-snap';
-const VERSION = '1.0.4';
-const DATE = '2021-07-14';
+const VERSION = '1.0.5';
+const DATE = '2022-01-16';
 
 $cli = new CLImate();
 $cli->description(sprintf('%s v%s [%s]', NAME, VERSION, DATE));
@@ -114,6 +113,10 @@ try {
             'longPrefix' => 'no-sweep',
             'description' => 'Do not remove local files. Overrides --sweep-days.',
             'noValue' => true
+        ],
+        'gpgRecipient' => [
+            'longPrefix' => 'gpg-recipient',
+            'description' => 'GPG recipient to encrypt the backup with.  If not specified, no encryption will be used.'
         ]
     ]);
 } catch (\Exception $e) {
@@ -206,9 +209,9 @@ if (empty($hostname) && !in_array($args['dbhost'], ['localhost', '127.0.0.1'])) 
     $hostname = $args['dbhost'];
 }
 
-// if still no hostname, and we're dumping ove SSH, use whatever the ssh-host thinks it's own hostname is.
+// if still no hostname, and we're dumping ove SSH, use whatever the ssh-host thinks its own hostname is.
 if (empty($hostname) && $args['sshHost']){
-    $hostname = trim(shell_exec("ssh -C {\$args['sshHost']} hostname"));
+    $hostname = trim(shell_exec("ssh -C '{$args['sshHost']}' hostname"));
 }
 
 // No user-override, no remote database server, no ssh-host, so use local machine hostname.
@@ -244,32 +247,42 @@ if (!empty($args['awsAccessKey'])) {
 
 $s3 = new S3MultiRegionClient($s3Opts);
 
-$dumpName = $hostname . '.' . $dbname . '.' . date('Ymd-Hi') . '.sql';
-$tmpfile = "{$tmpdir}/{$dumpName}";
-
+$dumpName = $hostname . '.' . $dbname . '.' . date('Ymd-Hi') . '.sql.bz2';
 
 $connArgs = dump_connection_args($args['dbhost'], $args['dbuser'], $args['dbpass']);
 
 // eschews pipes so that if mysqldump fails we get a non-zero exist code.
-$cmd = "mysqldump --single-transaction --triggers {$connArgs} --databases ${dbname} > {$tmpfile} && bzip2 {$tmpfile}";
+#$cmd = "mysqldump --single-transaction --triggers {$connArgs} --databases ${dbname} > {$tmpfile} && bzip2 {$tmpfile}";
+
+$gpgCmd = '';
+if ($args['gpgRecipient']) {
+    $gpgCmd = '| gpg --encrypt --recipient ' . escapeshellarg($args['gpgRecipient']);
+    $dumpName .= '.gpg';
+}
+
+$tmpFile = "{$tmpdir}/{$dumpName}";
+
+// using pipes w/ -o pipefail should work, too.
+$cmd = "bash -c 'set -e -o pipefail && mysqldump --single-transaction --triggers {$connArgs} --databases ${dbname} | bzip2 -c {$gpgCmd} > {$tmpFile}' 2>&1";
 
 if($args['sshHost']){
     $cmd = "ssh {$args['sshHost']} {$cmd}";
 }
 
-$tmpfile .= '.bz2';
 
 $output = [];
 $rc = null;
-$cli->inline("Preparing backup to: {$tmpfile} ... ");
+$cli->inline("Preparing backup to: {$tmpFile} ... ");
+$cli->darkGray($cmd);
 exec($cmd, $output, $rc);
-$size = human_filesize(filesize($tmpfile));
 
 if ($rc !== 0) {
-    $cli->to('error')->out('Failed taking snapshot.');
+    $cli->to('error')->out("\nFailed taking snapshot.");
     $cli->to('error')->out(implode("\n", $output));
     exit(1);
 }
+
+$size = human_filesize(filesize($tmpFile));
 
 $cli->out("OK. ($size)");
 $cli->out('Local backup took ' . (time() - $startTime) . ' seconds');
@@ -284,7 +297,7 @@ if (!empty($args['bucketPrefix'])) {
     $s3key = "{$args['bucketPrefix']}/{$s3key}";
 }
 
-$source = fopen($tmpfile, 'rb');
+$source = fopen($tmpFile, 'rb');
 
 $uploader = new MultipartUploader($s3, $source, ['bucket' => $bucket, 'key' => $s3key]);
 
@@ -334,7 +347,7 @@ $cli->out("Backup took {$elapsedTime} seconds");
 
 if ($cli->arguments->get('deleteLocal')){
     $cli->out('Deleting local snapshot because --delete-local');
-    unlink($tmpfile);
+    unlink($tmpFile);
 }
 
 $cli->table([
