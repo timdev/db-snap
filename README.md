@@ -2,9 +2,10 @@
 
 ## What is this?
 
-It's (yet another) database snapshot script.  It dumps your (mysql) database and sticks the dump in an S3 bucket. 
-It's implemented as a PHP script, and might be useful for folks who work in PHP.  Some day, I'll probably reimplement 
-it in golang (or not). 
+It's (yet another) database snapshot script.  It dumps your (mysql) database and
+sticks the dump in an S3 bucket. It's implemented as a PHP script, and might be
+useful for folks who work in PHP. Some day, I'll probably reimplement it in
+golang (or not).
 
 ## Features
 
@@ -14,14 +15,17 @@ it in golang (or not).
     * Connect to a bastion host and pull data from other hosts on private network.
 * Cron Friendly
     * Regular output to STDOUT, errors/warnings to STDERR.
-        * Write cron jobs to direct STDOUT someplace like a log file (`... >> /var/log/db-snap.log`)
-        * Configure cron to mail job output to you (via MAILTO) -- you'll only get email when something goes wrong.
+        * Write cron jobs to direct STDOUT someplace like a log file 
+          (`... >> /var/log/db-snap.log`)
+        * Configure cron to mail job output to you (via MAILTO) -- you'll only 
+          get email when something goes wrong.
     * CLI options are the entire interface
 
 ## Warning/Disclaimer/Guarantee
 
-I wrote this to meet my own needs, and it hasn't been tested beyond making it work for me.  Use it at your own risk.
-It might destroy your computer, network, or the known universe.  It's guaranteed to have at least a few bugs.
+I wrote this to meet my own needs, and it hasn't been tested beyond making it
+work for me.  Use it at your own risk. It might destroy your computer, network,
+or the known universe.  It's guaranteed to have at least a few bugs.
 
 You've been warned.  
 
@@ -29,8 +33,8 @@ You've been warned.
 
 If you find this useful, and want to contribute, feel free to open a pull request.
 
-If you want *me* to fix a bug, or implement some feature ... well, it can't hurt to ask.  Feel free to open an issue,
-but don't be sad if I ignore it.
+If you want *me* to fix a bug, or implement some feature ... well, it can't hurt
+to ask.  Feel free to open an issue, but don't be sad if I ignore it.
       
 ## Installation
 
@@ -48,9 +52,10 @@ A minimal invocation might looks like this (from the project root):
 
 Which will work fine assuming:
 
-* Your default credentials in ~/.aws/credentials can write to `my-private-s3-bucket`
-* You are able to connect to `exampledb` without providing any parameters (that is, `mysql exampledb` works from your
- shell).
+* Your default credentials in ~/.aws/credentials can write to
+  `my-private-s3-bucket`
+* You are able to connect to `exampledb` without providing any parameters (that 
+  is, `mysql exampledb` works from your shell).
  
 ## More options
  
@@ -102,38 +107,46 @@ Optional Arguments:
  
 ## Snapshot Storage
 
-Snapshots will be stored locally in $TEMP/db-snaps, unless you specify another local directory using the --local-dir 
-options.  Using --local-dir is recommended, so your system doesn't automatically clean up local snapshots. 
+Snapshots will be stored locally in $TEMP/db-snaps, unless you specify another
+local directory using the --local-dir options.  Using --local-dir is
+recommended, so your system doesn't automatically clean up local snapshots.
 
-By default, the script will remove all files from `--local-dir` that are older than 42 days (six weeks). You can change
-the retention period by providing a positive integer for `--sweep-days`. If you don't want to delete any files, you can
-pass the `--no-sweep` flag.
+By default, the script will remove all files from `--local-dir` that are older
+than 42 days (six weeks). You can change the retention period by providing a
+positive integer for `--sweep-days`. If you don't want to delete any files, you
+can pass the `--no-sweep` flag.
 
-Alternatively, you can pass `--delete-local`, which will remove the local copy of the current snapshot as soon as it is
-successfully uploaded to S3.
+Alternatively, you can pass `--delete-local`, which will remove the local copy
+of the current snapshot as soon as it is successfully uploaded to S3.
 
-Snapshots will be named by composing the host-name, database name, and date: `<hostname>.<dbname>.<datestamp>.sql.bz2`.  
-For example, if your database host is `db01.example.com`, and your database is `customers`, the snapshot file will be
-`db01.example.com.customers.20180510-2015.sql.bz2` (for a snapshot taken at 20:15 UTC on May 5th, 2018).
+Snapshots will be named by composing the host-name, database name, and date:
+`<hostname>.<dbname>.<datestamp>.sql.bz2`. For example, if your database host is
+`db01.example.com`, and your database is `customers`, the snapshot file will be
+`db01.example.com.customers.20180510-2015.sql.bz2` (for a snapshot taken at
+20:15 UTC on May 5th, 2018).
 
-Snapshots are stored in the specified S3 bucket.  By default, they a prefix of "db_backups/" is prepended to the 
-filename.  This prefix can be changed using the `--s3prefix` option.  If you want your snapshots stored in the root
-of the bucket, simply specify an empty prefix (ie: `--s3prefix='''`)
+Snapshots are stored in the specified S3 bucket.  By default, they a prefix of
+"db_backups/" is prepended to the filename.  This prefix can be changed using
+the `--s3prefix` option.  If you want your snapshots stored in the root of the
+bucket, simply specify an empty prefix (ie: `--s3prefix='''`)
 
 ## Dump over SSH
 
-You can pull a dump from a remote server by passing the `--ssh-host=` option.  db-snap will invoke the dump script 
-(mysqldump) on the remote host, and stream the output to a local file.  Examples: 
+You can pull a dump from a remote server by passing the `--ssh-host=` option. 
+db-snap will invoke the dump script (mysqldump) on the remote host, and stream
+the output to a local file.  Examples:
 
  * `--ssh-host=example.com` -- Connect to example.com
  * `--ssh-host=alice@example.com` -- Connect to example.com as user `alice`
  
- Notes:
+Notes:
  
- * No password support. You must be able to connect non-interactively (ie: ssh keys).
+ * No password support. You must be able to connect non-interactively (ie: ssh 
+   keys).
  * Be careful about your ForwardAgent setup while testing.
  
- This feature allows you to set up a central backup server that connects to various hosts to snapshot databases.  
+This feature allows you to set up a central backup server that connects to 
+various hosts to snapshot databases.  
 
 ## Example Usage
 
