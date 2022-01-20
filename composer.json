@@ -13,7 +13,8 @@
         "php": ">=7.4",
         "aws/aws-sdk-php": "^3.209",
         "league/climate": "^3.7",
-        "ext-ctype": "*"
+        "ext-ctype": "*",
+        "symfony/console": "^5.4"
     },
     "require-dev": {
         "roave/security-advisories": "dev-master"
