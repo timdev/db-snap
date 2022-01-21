@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use Aws\Exception\CredentialsException;
 use Aws\Exception\MultipartUploadException;
 use Aws\S3\Exception\S3Exception;
 use Aws\S3\MultipartUploader;
@@ -53,10 +52,15 @@ function validateOpts(array $o): array
     }
     $o['hostname'] = $hostname;
 
+//    var_dump(empty(o['aws-access-key']) , empty(o['aws-secret-key']));die();
+    if (empty($o['aws-access-key']) !== empty($o['aws-secret-key'])) {
+        throw new \InvalidArgumentException('Must specify both --aws-access-key and --aws-secret-key or neither.');
+    }
+
     return $o;
 }
 
-function dump_connection_args($host = null, $user = null, $pass = null)
+function mysqldump_command(string $db, ?string $host = null, ?string $user = null, ?string $pass = null, string $defaultsFile = null)
 {
     $args = '';
     if (!empty($host)) {
@@ -68,7 +72,13 @@ function dump_connection_args($host = null, $user = null, $pass = null)
     if (!empty($pass)) {
         $args .= ' -p' . escapeshellarg($pass);
     }
-    return $args;
+
+    if (!empty($defaultsFile)){
+        $args .= ' --defaults-extra-file=' . escapeshellarg($defaultsFile);
+    }
+
+    $args .= " --single-transaction --triggers --databases " . escapeshellarg($db);
+    return 'mysqldump ' . $args;
 }
 
 
@@ -129,7 +139,33 @@ function upload(string $localPath, string $bucket, string $key, S3MultiRegionCli
     $elapsedSecs = round($elapsedSecs, 2);
     $throughput = round($throughput, 2);
     $out->writeln("<info>OK:</info> {$elapsedSecs} seconds @ {$throughput} MB/s");
+}
 
+function snapshotName(array $opts): string
+{
+    /*
+    * Determine hostname component for dump file.
+    */
+
+    // user-specified hostname component.
+    $hostname = $opts['hostname'];
+
+    // if no user-specified value, use dbhost if it isn't localhost
+    if (empty($hostname) && !in_array($opts['db-host'], ['localhost', '127.0.0.1'])) {
+        $hostname = $opts['db-host'];
+    }
+
+    // if still no hostname, and we're dumping ove SSH, use whatever the ssh-host thinks its own hostname is.
+    if (empty($hostname) && $opts['ssh-host']) {
+        $hostname = trim(shell_exec("ssh -C '{$opts['ssh-host']}' hostname"));
+    }
+
+    // No user-override, no remote database server, no ssh-host, so use local machine hostname.
+    if (empty($hostname)) {
+        $hostname = gethostname();
+    }
+    $ts = date('Ymd-Hi');
+    return "{$hostname}.{$opts['db']}.{$ts}.sql.bz2" . ($opts['gpg-recipient'] ? '.gpg' : '');
 }
 
 function main(InputInterface $input, OutputInterface  $output): int {
@@ -145,35 +181,43 @@ function main(InputInterface $input, OutputInterface  $output): int {
     }
 
     try {
-        $dumpName = $opts['db'] . '.' . date('Ymd-Hi') . '.sql.bz2';
+        // filename of snapshot file.
+        $dumpName = snapshotName($opts);
 
-        // Build the shell command
-        $connArgs = dump_connection_args($opts['db-host'], $opts['db-user'], $opts['db-password']);
-        $dbname = escapeshellarg($opts['db']);
         $gpgCmd = '';
         if ($opts['gpg-recipient']) {
             $gpgCmd = '| gpg --encrypt --recipient ' . escapeshellarg($opts['gpg-recipient']);
-            $dumpName .= '.gpg';
         }
-        $localFile = "{$opts['local-dir']}/{$dumpName}";
-        $localFileArg = escapeshellarg($localFile);
+
+        // local pathname of snapshot file.
+        $localSnapshotPathname = "{$opts['local-dir']}/{$dumpName}";
+        // ... as an escaped shell argument.
+        $localSnapshotPathnameArg = escapeshellarg($localSnapshotPathname);
+
+        $dumpCmd = mysqldump_command($opts['db'], $opts['db-host'], $opts['db-user'], $opts['db-password']);
+
+        if ($opts['ssh-host']){
+            $dumpCmd = "ssh {$opts['ssh-host']} {$dumpCmd}";
+        }
+
         $cmd = <<<TXT
             set -e -o pipefail && \
-            mysqldump \
-                --single-transaction \
-                --triggers {$connArgs} \
-                --databases $dbname \
-                | bzip2 -c \
-                {$gpgCmd} \
-                > {$localFileArg}  
+            {$dumpCmd}\
+                | bzip2 -c {$gpgCmd} \
+                > {$localSnapshotPathnameArg}  
             TXT;
-        $cmd = "sh -c '{$cmd}' 2>&1";
+        $cmd = "sh -c '{$cmd}'";
+
+
+        $cmd .= ' 2>&1';
 
         // Run the shell command.
         $output->writeln("<info>Running:</info> {$cmd}", $output::VERBOSITY_VERY_VERBOSE);
+
+
         $cmdOutput = [];
         $rc = null;
-        $output->write("Preparing backup to: {$localFile} ... ");
+        $output->write("Preparing backup to: {$localSnapshotPathname} ... ");
         exec($cmd, $cmdOutput, $rc);
         if ($rc !== 0) {
             $output->writeln("<error>FAILED</error>");
@@ -182,14 +226,14 @@ function main(InputInterface $input, OutputInterface  $output): int {
         }
 
         // Report result of local operation
-        $size = human_filesize(filesize($localFile));
+        $size = human_filesize(filesize($localSnapshotPathname));
         $elapsed = (time() - $startTime) . ' seconds';
         $output->writeln("<info>OK:</info> ($size) ($elapsed)");
 
 
         //
         try {
-            upload($localFile, $opts['s3bucket'], $opts['s3prefix'] . '/' . $dumpName, makeS3Client($opts), $output);
+            upload($localSnapshotPathname, $opts['s3bucket'], $opts['s3prefix'] . '/' . $dumpName, makeS3Client($opts), $output);
         }catch(\Exception $e){
             $output->writeln("<error>FAILED</error>");
             $output->writeln('<error>' . $e->getMessage() . '</error>');
@@ -238,14 +282,16 @@ TXT;
     ->addOption('db-host', null, InputOption::VALUE_REQUIRED, 'Database hostname (the \'-h\' option to mysqldump)', 'localhost')
     ->addOption('db-user', null, InputOption::VALUE_REQUIRED, 'Database username (the \'-u\' option to mysqldump)')
     ->addOption('db-password', null, InputOption::VALUE_REQUIRED, 'Database password')
+    ->addOption('db-defaults-file', null, InputOption::VALUE_REQUIRED, 'Path to a .cnf file containing database credentials')
     ->addOption('aws-region', null, InputOption::VALUE_REQUIRED, 'AWS region to use for S3.', 'us-east-1')
     ->addOption('aws-profile', null, InputOption::VALUE_REQUIRED, 'AWS profile (from ~/.aws/credentials) to use to connect to S3.')
-    ->addOption('aws-access-key', null, InputOPtion::VALUE_REQUIRED)
+    ->addOption('aws-access-key', null, InputOPtion::VALUE_REQUIRED, 'AWS access key, requires --aws-secret-key')
+    ->addOption('aws-secret-key', null, InputOption::VALUE_REQUIRED, 'AWS secret key, requires --aws-access-key')
     ->addOption('ssh-host', null, InputOption::VALUE_REQUIRED, 'SSH to this host to perform dump. ex: example.com or user@example.com')
     ->addOption('local-dir', null, InputOption::VALUE_REQUIRED, 'Local directory for snapshots.', sys_get_temp_dir() . '/db-snaps')
     ->addOption('delete-local', null, InputOption::VALUE_NONE, 'If passed, delete local snapshot immediately after successful upload to S3')
     ->addOption('sweep-days', null, InputOption::VALUE_REQUIRED, 'Delete all files in <local-dir> more than <sweep-days> days old. Default: 42 days.</sweep-days>', '42')
     ->addOption('no-sweep', null, InputOption::VALUE_NONE, 'If passed, do not delete local snapshots.')
-    ->addOption('gpg-recipient', null, InputOption::VALUE_REQUIRED, 'GPG recipient to encrypt the snapshot with.')
+    ->addOption('gpg-recipient', null, InputOption::VALUE_REQUIRED, 'GPG recipient to encrypt the snapshot for')
     ->setCode('main')
     ->run();
