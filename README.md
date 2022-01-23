@@ -41,12 +41,14 @@ $ composer install
 
 A minimal invocation looks like this:
 
-`./bin/db-snap --db=exampledb --s3bucket=my-private-s3-bucket`
+```bash
+./bin/db-snap exampledb my-bucket`
+````
 
 Which will work fine assuming:
 
 * Your default credentials in ~/.aws/credentials can write to
-  `my-private-s3-bucket`
+  `my-bucket`
 * You are able to connect to `exampledb` without providing any parameters (that 
   is, `mysql exampledb` works from your shell).
 
@@ -54,13 +56,12 @@ A more complicated invocation might be something like:
 
 ```bash
 ./bin/db-snap \
-  --db=exampledb \
-  --s3bucket=my-bucket \
   --s3-region=us-west-2 \
   --ssh-host=bastion.exmaple.com \
   --db-defaults-file=/etc/db-snap/exampledb.cnf \
   --local-dir=/home/backups/db-snap \
-  --gpg-recipient=backups@example.com
+  --gpg-recipient=backups@example.com \
+  exampledb my-bucket
 ```
 
 Such an invocation would:
@@ -69,7 +70,7 @@ Such an invocation would:
   connection info in `/etc/db-snap/exampledb.cnf` on that host. 
 * Stream the mysqldump output back to the local machine, piping it through 
   `bzip2` and `gpg --encrypt ...`, and writing the output to 
- `/home/backups/db-snap/exampledb.sql.bz2.gpg`. 
+ `/home/backups/db-snap/bastion.example.com.exampledb.sql.bz2.gpg`. 
 * Upload the backup file to S3 via the `us-west-2` endpoint.
 
 ## More options
