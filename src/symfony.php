@@ -44,7 +44,7 @@ function main(InputInterface $input, OutputInterface  $output): int {
 
     try {
 
-        $snapshotFilename = snapshotName($opts);
+        $snapshotFilename = snapshotFileName($opts);
 
         $gpgCmd = '';
         if ($opts['gpg-recipient']) {
@@ -136,21 +136,21 @@ function validateOpts(array $o): array
     }
     $o['local-dir'] = realpath($localDir);
 
-    // user-specified hostname component.
-    $hostname = $o['hostname'];
-    // if no user-specified value, use dbhost if it isn't localhost
-    if (empty($hostname) && !in_array($o['db-host'], ['localhost', '127.0.0.1'])) {
-        $hostname = $o['db-host'];
-    }
-    // if still no hostname, and we're dumping ove SSH, use whatever the ssh-host thinks its own hostname is.
-    if (empty($hostname) && $o['ssh-host']){
-        $hostname = trim(shell_exec("ssh -C '{$o['ssh-host']}' hostname"));
-    }
-    // No user-override, no remote database server, no ssh-host, so use local machine hostname.
-    if (empty($hostname)) {
-        $hostname = gethostname();
-    }
-    $o['hostname'] = $hostname;
+//    // user-specified hostname component.
+//    $hostname = $o['hostname'];
+//    // if no user-specified value, use dbhost if it isn't localhost
+//    if (empty($hostname) && !in_array($o['db-host'], ['localhost', '127.0.0.1'])) {
+//        $hostname = $o['db-host'];
+//    }
+//    // if still no hostname, and we're dumping ove SSH, use whatever the ssh-host thinks its own hostname is.
+//    if (empty($hostname) && $o['ssh-host']){
+//        $hostname = trim(shell_exec("ssh -C '{$o['ssh-host']}' hostname"));
+//    }
+//    // No user-override, no remote database server, no ssh-host, so use local machine hostname.
+//    if (empty($hostname)) {
+//        $hostname = gethostname();
+//    }
+//    $o['hostname'] = $hostname;
 
     if (empty($o['aws-access-key']) !== empty($o['aws-secret-key'])) {
         throw new \InvalidArgumentException('Must specify both --aws-access-key and --aws-secret-key or neither.');
@@ -251,31 +251,11 @@ function upload(string $localPath, string $bucket, string $key, string $storageC
     $out->writeln("<info>OK:</info> {$elapsedSecs} seconds @ {$throughput} MB/s");
 }
 
-function snapshotName(array $opts): string
+function snapshotFilename(array $opts): string
 {
-    /*
-    * Determine hostname component for dump file.
-    */
-
-    // user-specified hostname component.
-    $hostname = $opts['hostname'];
-
-    // if no user-specified value, use dbhost if it isn't localhost
-    if (empty($hostname) && !in_array($opts['db-host'], ['localhost', '127.0.0.1'])) {
-        $hostname = $opts['db-host'];
-    }
-
-    // if still no hostname, and we're dumping ove SSH, use whatever the ssh-host thinks its own hostname is.
-    if (empty($hostname) && $opts['ssh-host']) {
-        $hostname = trim(shell_exec("ssh -C '{$opts['ssh-host']}' hostname"));
-    }
-
-    // No user-override, no remote database server, no ssh-host, so use local machine hostname.
-    if (empty($hostname)) {
-        $hostname = gethostname();
-    }
     $ts = date('Ymd-Hi');
-    return "{$hostname}.{$opts['db']}.{$ts}.sql.bz2" . ($opts['gpg-recipient'] ? '.gpg' : '');
+    $gpg = $opts['gpg-recipient'] ? '.gpg' : '';
+    return "{$opts['db']}.{$ts}.sql.bz2{$gpg}";
 }
 
 $description = <<<TXT
@@ -310,7 +290,6 @@ $app = (new SingleCommandApplication())
 
     ->addOption('s3-prefix', null, InputOption::VALUE_REQUIRED, 'The prefix to use when storing the snapshot in S3.', 'db_backups')
     ->addOption('s3-storage-class', null, InputOption::VALUE_REQUIRED, 'S3 storage class. Valid values are: ' . implode(', ', $s3StorageClasses), 'STANDARD')
-    ->addOption('hostname', null, InputOption::VALUE_REQUIRED, 'If Present..')
 
     ->addOption('db-host', null, InputOption::VALUE_REQUIRED, 'Database hostname (the \'-h\' option to mysqldump)', 'localhost')
     ->addOption('db-user', null, InputOption::VALUE_REQUIRED, 'Database username (the \'-u\' option to mysqldump)')
