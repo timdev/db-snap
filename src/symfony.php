@@ -27,8 +27,8 @@ $s3StorageClasses = [
     'GLACIER_IR'
 ];
 
-function main(InputInterface $input, OutputInterface  $output): int {
-
+function main(InputInterface $input, OutputInterface $output): int
+{
     $startTime = time();
     $output->writeln('Starting at ' . date('Y-m-d H:i:s', $startTime));
     $opts = $input->getOptions();
@@ -37,13 +37,12 @@ function main(InputInterface $input, OutputInterface  $output): int {
 
     try {
         $opts = validateOpts($opts);
-    }catch(\InvalidArgumentException $e){
+    } catch (\InvalidArgumentException $e) {
         $output->writeln('<error>' . $e->getMessage() . '</error>');
         return 1;
     }
 
     try {
-
         $snapshotFilename = snapshotFileName($opts);
 
         $gpgCmd = '';
@@ -56,9 +55,15 @@ function main(InputInterface $input, OutputInterface  $output): int {
         // ... as an escaped shell argument.
         $localSnapshotPathnameArg = escapeshellarg($localSnapshotPathname);
 
-        $dumpCmd = mysqldumpCommand($opts['db'], $opts['db-host'], $opts['db-user'], $opts['db-password'], $opts['db-defaults-file']);
+        $dumpCmd = mysqldumpCommand(
+            $opts['db'],
+            $opts['db-host'],
+            $opts['db-user'],
+            $opts['db-password'],
+            $opts['db-defaults-file']
+        );
 
-        if ($opts['ssh-host']){
+        if ($opts['ssh-host']) {
             $dumpCmd = "ssh {$opts['ssh-host']} {$dumpCmd}";
         }
 
@@ -98,14 +103,21 @@ function main(InputInterface $input, OutputInterface  $output): int {
             if ($opts['s3-prefix']) {
                 $key = $opts['s3-prefix'] . '/' . $key;
             }
-            upload($localSnapshotPathname, $opts['s3-bucket'], $key, $opts['s3-storage-class'], makeS3Client($opts), $output);
-        }catch(\Throwable $e){
+            upload(
+                $localSnapshotPathname,
+                $opts['s3-bucket'],
+                $key,
+                $opts['s3-storage-class'],
+                makeS3Client($opts),
+                $output
+            );
+        } catch (\Throwable $e) {
             $output->writeln("<error>FAILED</error>");
             throw $e;
         }
 
         $output->writeln('Finished at ' . date('Y-m-d H:i:s'));
-    }catch(\Throwable $e){
+    } catch (\Throwable $e) {
         $output->writeln('<error>' . $e->getMessage() . '</error>');
         return 1;
     }
@@ -116,15 +128,15 @@ function validateOpts(array $o): array
 {
     global $s3StorageClasses;
 
-    if (empty($o['db'])){
+    if (empty($o['db'])) {
         throw new \InvalidArgumentException('Missing required option --db');
     }
 
-    if (empty($o['s3-bucket'])){
+    if (empty($o['s3-bucket'])) {
         throw new \InvalidArgumentException('Missing required option --s3-bucket');
     }
 
-    $o['sweep-days'] = (int) $o['sweep-days'];
+    $o['sweep-days'] = (int)$o['sweep-days'];
 
     // local snapshot dir
     $localDir = $o['local-dir'];
@@ -136,27 +148,11 @@ function validateOpts(array $o): array
     }
     $o['local-dir'] = realpath($localDir);
 
-//    // user-specified hostname component.
-//    $hostname = $o['hostname'];
-//    // if no user-specified value, use dbhost if it isn't localhost
-//    if (empty($hostname) && !in_array($o['db-host'], ['localhost', '127.0.0.1'])) {
-//        $hostname = $o['db-host'];
-//    }
-//    // if still no hostname, and we're dumping ove SSH, use whatever the ssh-host thinks its own hostname is.
-//    if (empty($hostname) && $o['ssh-host']){
-//        $hostname = trim(shell_exec("ssh -C '{$o['ssh-host']}' hostname"));
-//    }
-//    // No user-override, no remote database server, no ssh-host, so use local machine hostname.
-//    if (empty($hostname)) {
-//        $hostname = gethostname();
-//    }
-//    $o['hostname'] = $hostname;
-
     if (empty($o['aws-access-key']) !== empty($o['aws-secret-key'])) {
         throw new \InvalidArgumentException('Must specify both --aws-access-key and --aws-secret-key or neither.');
     }
 
-    if (! in_array($o['s3-storage-class'], $s3StorageClasses)){
+    if (!in_array($o['s3-storage-class'], $s3StorageClasses, true)) {
         throw new \InvalidArgumentException("Invalid --s3-storage-class: {$o['s3-storage-class']}");
     }
     return $o;
@@ -167,13 +163,12 @@ function mysqldumpCommand(
     ?string $host = null,
     ?string $user = null,
     ?string $pass = null,
-    string $defaultsFile = null
-): string
-{
+    ?string $defaultsFile = null
+): string {
     $args = '';
 
     // Note: for some reason, this option must be the *first* one passed to mysqldump!
-    if (!empty($defaultsFile)){
+    if (!empty($defaultsFile)) {
         $args .= ' --defaults-extra-file=' . escapeshellarg($defaultsFile);
     }
 
@@ -194,7 +189,7 @@ function mysqldumpCommand(
 function humanFilesize(int $bytes, int $decimals = 2): string
 {
     $sz = 'BKMGTP';
-    $factor = (int) floor((strlen((string) $bytes) - 1) / 3);
+    $factor = (int)floor((strlen((string)$bytes) - 1) / 3);
     return sprintf("%.{$decimals}f", $bytes / (1024 ** $factor)) . ($sz[$factor] ?: '');
 }
 
@@ -203,21 +198,26 @@ function makeS3Client(array $opts): S3MultiRegionClient
     $s3Opts = [
         'version' => 'latest'
     ];
-    if ($opts['aws-access-key'] && $opts['aws-secret-key']){
+    if ($opts['aws-access-key'] && $opts['aws-secret-key']) {
         $s3Opts['credentials'] = [
             'key' => $opts['aws-access-key'],
             'secret' => $opts['aws-secret-key']
         ];
-    }elseif($opts['aws-profile']){
+    } elseif ($opts['aws-profile']) {
         $s3Opts['profile'] = $opts['aws-profile'];
     }
 
     return new S3MultiRegionClient($s3Opts);
 }
 
-function upload(string $localPath, string $bucket, string $key, string $storageClass, S3MultiRegionClient $s3Client, OutputInterface $out): void
-{
-
+function upload(
+    string $localPath,
+    string $bucket,
+    string $key,
+    string $storageClass,
+    S3MultiRegionClient $s3Client,
+    OutputInterface $out
+): void {
     $params = ['StorageClass' => $storageClass];
     $uploader = new MultipartUploader($s3Client, $localPath, compact('bucket', 'key', 'params'));
 
@@ -229,25 +229,25 @@ function upload(string $localPath, string $bucket, string $key, string $storageC
         try {
             $result = $uploader->upload();
         } catch (MultipartUploadException $e) {
-
             if ($e->getPrevious() instanceof S3Exception
                 && $e->getPrevious()->getPrevious() instanceof GuzzleClientException
                 && $e->getPrevious()->getPrevious()->getCode() === 403) {
-                throw new \RuntimeException('Upload Failed with 403 Forbidden.  Your AWS credentials are probably wrong.');
+                throw new \RuntimeException(
+                    'Upload Failed with 403 Forbidden.  Your AWS credentials are probably wrong.'
+                );
             }
 
             $out->writeln("Upload failed [{$e->getMessage()}].  Retrying.");
             $uploader = new MultipartUploader($s3Client, $source, [
                 'state' => $e->getState(),
             ]);
-
         } catch (\LogicException $e) {
             throw new \RuntimeException("Upload failed: [{$e->getMessage()}].  Fatal.");
         }
     } while (!isset($result));
 
     $elapsedSecs = ((microtime(true) - $startTime));
-    $throughput = ( ($filesize/(1024*1024)) / $elapsedSecs) ;
+    $throughput = (($filesize / (1024 * 1024)) / $elapsedSecs);
     $elapsedSecs = round($elapsedSecs, 2);
     $throughput = round($throughput, 2);
     $out->writeln("<info>OK:</info> {$elapsedSecs} seconds @ {$throughput} MB/s");
