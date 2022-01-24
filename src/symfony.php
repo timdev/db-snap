@@ -56,7 +56,7 @@ function main(InputInterface $input, OutputInterface  $output): int {
         // ... as an escaped shell argument.
         $localSnapshotPathnameArg = escapeshellarg($localSnapshotPathname);
 
-        $dumpCmd = mysqldumpCommand($opts['db'], $opts['db-host'], $opts['db-user'], $opts['db-password']);
+        $dumpCmd = mysqldumpCommand($opts['db'], $opts['db-host'], $opts['db-user'], $opts['db-password'], $opts['db-defaults-file']);
 
         if ($opts['ssh-host']){
             $dumpCmd = "ssh {$opts['ssh-host']} {$dumpCmd}";
@@ -171,6 +171,12 @@ function mysqldumpCommand(
 ): string
 {
     $args = '';
+
+    // Note: for some reason, this option must be the *first* one passed to mysqldump!
+    if (!empty($defaultsFile)){
+        $args .= ' --defaults-extra-file=' . escapeshellarg($defaultsFile);
+    }
+
     if (!empty($host)) {
         $args .= ' -h ' . escapeshellarg($host);
     }
@@ -179,10 +185,6 @@ function mysqldumpCommand(
     }
     if (!empty($pass)) {
         $args .= ' -p' . escapeshellarg($pass);
-    }
-
-    if (!empty($defaultsFile)){
-        $args .= ' --defaults-extra-file=' . escapeshellarg($defaultsFile);
     }
 
     $args .= " --single-transaction --triggers --databases " . escapeshellarg($db);
