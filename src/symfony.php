@@ -15,13 +15,25 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\SingleCommandApplication;
 
+$s3StorageClasses = [
+    'STANDARD',
+    'REDUCED_REDUNDANCY',
+    'STANDARD_IA',
+    'ONEZONE_IA',
+    'INTELLIGENT_TIERING',
+    'GLACIER',
+    'DEEP_ARCHIVE',
+    'OUTPOSTS',
+    'GLACIER_IR'
+];
+
 function main(InputInterface $input, OutputInterface  $output): int {
 
     $startTime = time();
     $output->writeln('Starting at ' . date('Y-m-d H:i:s', $startTime));
     $opts = $input->getOptions();
     $opts['db'] = $input->getArgument('db');
-    $opts['s3bucket'] = $input->getArgument('bucket');
+    $opts['s3-bucket'] = $input->getArgument('bucket');
 
     try {
         $opts = validateOpts($opts);
@@ -83,10 +95,10 @@ function main(InputInterface $input, OutputInterface  $output): int {
         // Upload to S3
         try {
             $key = $snapshotFilename;
-            if ($opts['s3prefix']) {
-                $key = $opts['s3prefix'] . '/' . $key;
+            if ($opts['s3-prefix']) {
+                $key = $opts['s3-prefix'] . '/' . $key;
             }
-            upload($localSnapshotPathname, $opts['s3bucket'], $key, makeS3Client($opts), $output);
+            upload($localSnapshotPathname, $opts['s3-bucket'], $key, $opts['s3-storage-class'], makeS3Client($opts), $output);
         }catch(\Throwable $e){
             $output->writeln("<error>FAILED</error>");
             throw $e;
@@ -102,12 +114,14 @@ function main(InputInterface $input, OutputInterface  $output): int {
 
 function validateOpts(array $o): array
 {
+    global $s3StorageClasses;
+
     if (empty($o['db'])){
         throw new \InvalidArgumentException('Missing required option --db');
     }
 
-    if (empty($o['s3bucket'])){
-        throw new \InvalidArgumentException('Missing required option --s3bucket');
+    if (empty($o['s3-bucket'])){
+        throw new \InvalidArgumentException('Missing required option --s3-bucket');
     }
 
     $o['sweep-days'] = (int) $o['sweep-days'];
@@ -142,6 +156,9 @@ function validateOpts(array $o): array
         throw new \InvalidArgumentException('Must specify both --aws-access-key and --aws-secret-key or neither.');
     }
 
+    if (! in_array($o['s3-storage-class'], $s3StorageClasses)){
+        throw new \InvalidArgumentException("Invalid --s3-storage-class: {$o['s3-storage-class']}");
+    }
     return $o;
 }
 
@@ -196,9 +213,12 @@ function makeS3Client(array $opts): S3MultiRegionClient
     return new S3MultiRegionClient($s3Opts);
 }
 
-function upload(string $localPath, string $bucket, string $key, S3MultiRegionClient $s3Client, OutputInterface $out): void
+function upload(string $localPath, string $bucket, string $key, string $storageClass, S3MultiRegionClient $s3Client, OutputInterface $out): void
 {
-    $uploader = new MultipartUploader($s3Client, $localPath, compact('bucket', 'key'));
+
+    $params = ['StorageClass' => $storageClass];
+    $uploader = new MultipartUploader($s3Client, $localPath, compact('bucket', 'key', 'params'));
+
     $source = $localPath;
     $filesize = filesize($localPath);
     $out->write('Uploading ' . humanFilesize($filesize) . ' to ' . $bucket . '/' . $key . ' ... ');
@@ -267,7 +287,7 @@ the (bzip2-compressed, and optionally encrypted) snapshot in an S3 bucket.
 If your environment is set up with ~/.my.cnf and a your default AWS_PROFILE can
 write to your S3 bucket, usage can be as simple as:
 
-./db-snap --db=mydb --s3bucket=my-bucket-name
+./db-snap --db=mydb --s3-bucket=my-bucket-name
 
 By default, this program will store snapshots in the local filesystem for six
 weeks. You can change the retention period by passing an integer with to 
@@ -287,9 +307,9 @@ $app = (new SingleCommandApplication())
     ->setDescription($description)
     ->addArgument('db', InputArgument::REQUIRED, 'The name of the database to snapshot')
     ->addArgument('bucket', InputArgument::REQUIRED, 'The name of the S3 bucket to store the snapshot in')
-    
-    ->addOption('s3prefix', null, InputOption::VALUE_REQUIRED, 'The prefix to use when storing the snapshot in S3.', 'db_backups')
 
+    ->addOption('s3-prefix', null, InputOption::VALUE_REQUIRED, 'The prefix to use when storing the snapshot in S3.', 'db_backups')
+    ->addOption('s3-storage-class', null, InputOption::VALUE_REQUIRED, 'S3 storage class. Valid values are: ' . implode(', ', $s3StorageClasses), 'STANDARD')
     ->addOption('hostname', null, InputOption::VALUE_REQUIRED, 'If Present..')
 
     ->addOption('db-host', null, InputOption::VALUE_REQUIRED, 'Database hostname (the \'-h\' option to mysqldump)', 'localhost')
