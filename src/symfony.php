@@ -30,7 +30,10 @@ $s3StorageClasses = [
 function main(InputInterface $input, OutputInterface $output): int
 {
     $startTime = time();
-    $output->writeln('Starting at ' . date('Y-m-d H:i:s', $startTime));
+    $output->writeln(
+            'Starting at ' . date('Y-m-d H:i:s', $startTime),
+            OutputInterface::VERBOSITY_VERBOSE
+    );
     $opts = $input->getOptions();
     $opts['db'] = $input->getArgument('db');
     $opts['s3-bucket'] = $input->getArgument('bucket');
@@ -56,11 +59,7 @@ function main(InputInterface $input, OutputInterface $output): int
         $localSnapshotPathnameArg = escapeshellarg($localSnapshotPathname);
 
         $dumpCmd = mysqldumpCommand(
-            $opts['db'],
-            $opts['db-host'],
-            $opts['db-user'],
-            $opts['db-password'],
-            $opts['db-defaults-file']
+            $opts['db'], $opts['db-host'], $opts['db-user'], $opts['db-password'], $opts['db-defaults-file']
         );
 
         if ($opts['ssh-host']) {
@@ -109,8 +108,7 @@ function main(InputInterface $input, OutputInterface $output): int
                     $opts['s3-bucket'],
                     $key,
                     $opts['s3-storage-class'],
-                    makeS3Client($opts),
-                    $output
+                    makeS3Client($opts), $output
                 );
             } catch (\Throwable $e) {
                 $output->writeln("<error>FAILED</error>");
@@ -121,13 +119,13 @@ function main(InputInterface $input, OutputInterface $output): int
         if (! $opts['no-sweep']) {
             sweep($opts['local-dir'], (int)$opts['sweep-days'], $output);
         }else{
-            $output->writeln("Skipping sweep due to --no-sweep option");
+            $output->writeln("Skipping sweep due to --no-sweep option", OutputInterface::VERBOSITY_VERY_VERBOSE);
         }
     } catch (\Throwable $e) {
-        $output->writeln('<error>' . $e->getMessage() . '</error>');
+        $output->writeln('<comment>' . $e->getMessage() . '</comment>');
         return 1;
     }
-    $output->writeln('Finished at ' . date('Y-m-d H:i:s'));
+    $output->writeln('Finished at ' . date('Y-m-d H:i:s'), OutputInterface::VERBOSITY_VERBOSE);
     return 0;
 }
 
@@ -236,6 +234,7 @@ function upload(
     $filesize = filesize($localPath);
     $out->write('Uploading ' . humanFilesize($filesize) . ' to ' . $bucket . '/' . $key . ' ... ');
     $startTime = microtime(true);
+    $tries = 0;
     do {
         try {
             $result = $uploader->upload();
@@ -248,10 +247,17 @@ function upload(
                 );
             }
 
-            $out->writeln("Upload failed [{$e->getMessage()}].  Retrying.");
-            $uploader = new MultipartUploader($s3Client, $source, [
-                'state' => $e->getState(),
-            ]);
+            if ($tries > 4) {
+                throw $e;
+            }
+
+            $out->writeln(
+                    "<fg=gray>Upload failed [{$e->getMessage()}].  Retrying ... </>",
+                    OutputInterface::VERBOSITY_VERBOSE
+            );
+            $uploader = new MultipartUploader($s3Client, $source, ['state' => $e->getState()]);
+            ++$tries;
+            usleep(500000);
         } catch (\LogicException $e) {
             throw new \RuntimeException("Upload failed: [{$e->getMessage()}].  Fatal.");
         }
@@ -272,25 +278,14 @@ function snapshotFilename(array $opts): string
 }
 
 $description = <<<TXT
-A MySQL Snapshot Utility
+A MySQL snapshot utility.
 
-Drives `mysqldump`, optionally over SSH, to snapshot a MySQL database, storing
-the (bzip2-compressed, and optionally encrypted) snapshot in an S3 bucket. 
+  Creates bzip2-compressed snapshots with mysqldump.
 
-If your environment is set up with ~/.my.cnf and a your default AWS_PROFILE can
-write to your S3 bucket, usage can be as simple as:
+  Optionally: encrypts with GPG, uploads to S3 (with various options), and
+  manages local snapshot retention. 
 
-./db-snap --db=mydb --s3-bucket=my-bucket-name
-
-By default, this program will store snapshots in the local filesystem for six
-weeks. You can change the retention period by passing an integer with to 
---sweep-days, or pass --delete-local to delete the local copy immediately after
-a successful upload to S3.
-
-(More) complete documentation is available at:
-
-https://github.com/timdev/db-snap
-
+  For more info, see: https://github.com/timdev/db-snap 
 TXT;
 
 
@@ -306,8 +301,8 @@ $app = (new SingleCommandApplication())
 
     ->addOption('db-host', null, InputOption::VALUE_REQUIRED, 'Database hostname (the \'-h\' option to mysqldump)', 'localhost')
     ->addOption('db-user', null, InputOption::VALUE_REQUIRED, 'Database username (the \'-u\' option to mysqldump)')
-    ->addOption('db-password', null, InputOption::VALUE_REQUIRED, 'Database password')
-    ->addOption('db-defaults-file', null, InputOption::VALUE_REQUIRED, 'Path to a .cnf file containing database credentials')
+    ->addOption('db-password', null, InputOption::VALUE_REQUIRED, 'Database password (the \'-p\' option to mysqldump)')
+    ->addOption('db-defaults-file', null, InputOption::VALUE_REQUIRED, 'The --defaults-extra-file option to mysqldump')
 
     ->addOption('aws-region', null, InputOption::VALUE_REQUIRED, 'AWS region to use for S3.', 'us-east-1')
     ->addOption('aws-profile', null, InputOption::VALUE_REQUIRED, 'AWS profile (from ~/.aws/credentials) to use to connect to S3.')
@@ -317,9 +312,9 @@ $app = (new SingleCommandApplication())
     ->addOption('ssh-host', null, InputOption::VALUE_REQUIRED, 'SSH to this host to perform dump. ex: example.com or user@example.com')
 
     ->addOption('local-dir', null, InputOption::VALUE_REQUIRED, 'Local directory for snapshots.', sys_get_temp_dir() . '/db-snaps')
-    ->addOption('delete-local', null, InputOption::VALUE_NONE, 'If passed, delete local snapshot immediately after successful upload to S3')
     ->addOption('sweep-days', null, InputOption::VALUE_REQUIRED, 'Delete *all* files in <local-dir> more than <sweep-days> days old. Default: 42 days.</sweep-days>', '42')
     ->addOption('no-sweep', null, InputOption::VALUE_NONE, 'If passed, do not delete any local files.')
+    ->addOption('delete-local', null, InputOption::VALUE_NONE, 'If passed, delete local snapshot immediately after successful upload to S3')
 
     ->addOption('gpg-recipient', null, InputOption::VALUE_REQUIRED, 'GPG recipient to encrypt the snapshot for')
 
