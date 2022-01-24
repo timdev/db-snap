@@ -98,30 +98,45 @@ function main(InputInterface $input, OutputInterface $output): int
 
 
         // Upload to S3
-        try {
-            $key = $snapshotFilename;
-            if ($opts['s3-prefix']) {
-                $key = $opts['s3-prefix'] . '/' . $key;
+        if ($opts['s3-bucket']){
+            try {
+                $key = $snapshotFilename;
+                if ($opts['s3-prefix']) {
+                    $key = $opts['s3-prefix'] . '/' . $key;
+                }
+                upload(
+                    $localSnapshotPathname,
+                    $opts['s3-bucket'],
+                    $key,
+                    $opts['s3-storage-class'],
+                    makeS3Client($opts),
+                    $output
+                );
+            } catch (\Throwable $e) {
+                $output->writeln("<error>FAILED</error>");
+                throw $e;
             }
-            upload(
-                $localSnapshotPathname,
-                $opts['s3-bucket'],
-                $key,
-                $opts['s3-storage-class'],
-                makeS3Client($opts),
-                $output
-            );
-        } catch (\Throwable $e) {
-            $output->writeln("<error>FAILED</error>");
-            throw $e;
         }
 
-        $output->writeln('Finished at ' . date('Y-m-d H:i:s'));
+        if (! $opts['no-sweep']) {
+            sweep($opts['local-dir'], (int)$opts['sweep-days'], $output);
+        }else{
+            $output->writeln("Skipping sweep due to --no-sweep option");
+        }
     } catch (\Throwable $e) {
         $output->writeln('<error>' . $e->getMessage() . '</error>');
         return 1;
     }
+    $output->writeln('Finished at ' . date('Y-m-d H:i:s'));
     return 0;
+}
+
+function sweep(string $localDir, int $days, OutputInterface $output): void
+{
+    $output->write("Purging old backups in: {$localDir} older than {$days} days old ... ");
+    $localDir = escapeshellarg($localDir);
+    exec("find {$localDir} -mtime +{$days} | xargs rm -f");
+    $output->writeln('<info>OK</info>');
 }
 
 function validateOpts(array $o): array
@@ -130,10 +145,6 @@ function validateOpts(array $o): array
 
     if (empty($o['db'])) {
         throw new \InvalidArgumentException('Missing required option --db');
-    }
-
-    if (empty($o['s3-bucket'])) {
-        throw new \InvalidArgumentException('Missing required option --s3-bucket');
     }
 
     $o['sweep-days'] = (int)$o['sweep-days'];
@@ -288,9 +299,9 @@ $app = (new SingleCommandApplication())
     ->setVersion('2.0.0-dev')
     ->setDescription($description)
     ->addArgument('db', InputArgument::REQUIRED, 'The name of the database to snapshot')
-    ->addArgument('bucket', InputArgument::REQUIRED, 'The name of the S3 bucket to store the snapshot in')
+    ->addArgument('bucket', InputArgument::OPTIONAL, 'The name of the S3 bucket to store the snapshot in')
 
-    ->addOption('s3-prefix', null, InputOption::VALUE_REQUIRED, 'The prefix to use when storing the snapshot in S3.', 'db_backups')
+    ->addOption('s3-prefix', null, InputOption::VALUE_REQUIRED, 'The prefix to use when storing the snapshot in S3.', 'db-snaps')
     ->addOption('s3-storage-class', null, InputOption::VALUE_REQUIRED, 'S3 storage class. Valid values are: ' . implode(', ', $s3StorageClasses), 'STANDARD')
 
     ->addOption('db-host', null, InputOption::VALUE_REQUIRED, 'Database hostname (the \'-h\' option to mysqldump)', 'localhost')
@@ -307,8 +318,8 @@ $app = (new SingleCommandApplication())
 
     ->addOption('local-dir', null, InputOption::VALUE_REQUIRED, 'Local directory for snapshots.', sys_get_temp_dir() . '/db-snaps')
     ->addOption('delete-local', null, InputOption::VALUE_NONE, 'If passed, delete local snapshot immediately after successful upload to S3')
-    ->addOption('sweep-days', null, InputOption::VALUE_REQUIRED, 'Delete all files in <local-dir> more than <sweep-days> days old. Default: 42 days.</sweep-days>', '42')
-    ->addOption('no-sweep', null, InputOption::VALUE_NONE, 'If passed, do not delete local snapshots.')
+    ->addOption('sweep-days', null, InputOption::VALUE_REQUIRED, 'Delete *all* files in <local-dir> more than <sweep-days> days old. Default: 42 days.</sweep-days>', '42')
+    ->addOption('no-sweep', null, InputOption::VALUE_NONE, 'If passed, do not delete any local files.')
 
     ->addOption('gpg-recipient', null, InputOption::VALUE_REQUIRED, 'GPG recipient to encrypt the snapshot for')
 
