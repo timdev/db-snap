@@ -63,7 +63,8 @@ function main(InputInterface $input, OutputInterface $output): int
         );
 
         if ($opts['ssh-host']) {
-            $dumpCmd = "ssh {$opts['ssh-host']} {$dumpCmd}";
+            $keyOpt = $opts['ssh-key-file'] ? '-i ' . escapeshellarg($opts['ssh-key-file']) : '';
+            $dumpCmd = "ssh {$opts['ssh-host']} {$keyOpt} {$dumpCmd}";
         }
 
         $cmd = <<<TXT
@@ -72,7 +73,9 @@ function main(InputInterface $input, OutputInterface $output): int
                 | bzip2 -c {$gpgCmd} \
                 > {$localSnapshotPathnameArg}  
             TXT;
-        $cmd = "sh -c '{$cmd}'";
+
+        // We need bash, since pipefail is a bashism.
+        $cmd = "bash -c '{$cmd}'";
 
 
         $cmd .= ' 2>&1';
@@ -310,6 +313,7 @@ $app = (new SingleCommandApplication())
     ->addOption('aws-secret-key', null, InputOption::VALUE_REQUIRED, 'AWS secret key, requires --aws-access-key')
 
     ->addOption('ssh-host', null, InputOption::VALUE_REQUIRED, 'SSH to this host to perform dump. ex: example.com or user@example.com')
+    ->addOption('ssh-key-file', null, InputOption::VALUE_REQUIRED, 'SSH key to use to connect to --ssh-host. Passed with the \'-i\' option to ssh. Optional.')
 
     ->addOption('local-dir', null, InputOption::VALUE_REQUIRED, 'Local directory for snapshots.', sys_get_temp_dir() . '/db-snaps')
     ->addOption('sweep-days', null, InputOption::VALUE_REQUIRED, 'Delete *all* files in <local-dir> more than <sweep-days> days old. Default: 42 days.</sweep-days>', '42')
